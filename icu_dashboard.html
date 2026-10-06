@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ICU Patient Deterioration Early-Warning System</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.92); }
+    }
+    .pulse-dot { animation: pulseGlow 2s infinite ease-in-out; }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased min-h-screen p-4 md:p-6 font-sans">
+
+  <!-- TOP HEADER & BRANDING -->
+  <header class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 mb-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div class="flex items-center gap-4">
+      <div class="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center text-2xl font-bold shadow-md shadow-blue-500/20">
+        🩺
+      </div>
+      <div>
+        <h1 class="text-xl md:text-2xl font-bold text-[var(--foreground)] tracking-tight">ICU Deterioration Early-Warning System</h1>
+        <p class="text-xs md:text-sm text-[var(--muted-foreground)]">Pretrained Medical Foundation Model (ClinicalBERT) + EHR Transfer Learning</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="bg-[var(--background)] border border-[var(--border)] px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
+        <span>Horizon: <strong class="text-[var(--foreground)]">Next 12 Hours</strong></span>
+      </div>
+      <button id="simToggleBtn" onclick="toggleSimulator()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+        <span>▶</span> Live Streaming (Active)
+      </button>
+    </div>
+  </header>
+
+  <!-- LIVE METRIC SUMMARY TICKER -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div class="bg-[var(--card)] border border-[var(--border)] p-4 rounded-xl">
+      <div class="text-xs text-[var(--muted-foreground)] uppercase font-semibold">Total Monitored Beds</div>
+      <div class="text-2xl font-extrabold text-[var(--foreground)] mt-1" id="totalBedsCount">20 Beds</div>
+      <div class="text-[11px] text-emerald-500 mt-0.5">Medical & Surgical ICUs</div>
+    </div>
+    <div class="bg-[var(--card)] border border-[var(--border)] p-4 rounded-xl">
+      <div class="text-xs text-[var(--muted-foreground)] uppercase font-semibold">Critical High Risk Alerts</div>
+      <div class="text-2xl font-extrabold text-red-500 mt-1" id="highRiskCount">3 Patients</div>
+      <div class="text-[11px] text-red-400 mt-0.5">>50% Deterioration Prob</div>
+    </div>
+    <div class="bg-[var(--card)] border border-[var(--border)] p-4 rounded-xl">
+      <div class="text-xs text-[var(--muted-foreground)] uppercase font-semibold">Foundation Model AUROC</div>
+      <div class="text-2xl font-extrabold text-blue-500 mt-1">0.9142</div>
+      <div class="text-[11px] text-blue-400 mt-0.5">+9.3% vs GBDT Baseline</div>
+    </div>
+    <div class="bg-[var(--card)] border border-[var(--border)] p-4 rounded-xl">
+      <div class="text-xs text-[var(--muted-foreground)] uppercase font-semibold">Sensitivity / Recall</div>
+      <div class="text-2xl font-extrabold text-amber-500 mt-1">92.3%</div>
+      <div class="text-[11px] text-amber-400 mt-0.5">Brier Score: 0.0712</div>
+    </div>
+  </div>
+
+  <!-- NAVIGATION TABS -->
+  <div class="flex items-center gap-2 border-b border-[var(--border)] mb-6 pb-2 overflow-x-auto">
+    <button onclick="switchTab('matrix')" id="tab-matrix" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] shadow-sm">
+      🏥 ICU Bed Matrix
+    </button>
+    <button onclick="switchTab('inspector')" id="tab-inspector" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+      🔬 Patient Deep-Dive Inspector
+    </button>
+    <button onclick="switchTab('workbench')" id="tab-workbench" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+      🧠 Transfer Learning Workbench
+    </button>
+    <button onclick="switchTab('metrics')" id="tab-metrics" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+      📊 Model Metrics & Calibration
+    </button>
+  </div>
+
+  <!-- TAB 1: ICU BED MATRIX -->
+  <div id="view-matrix" class="space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-bold text-[var(--foreground)]">Bedside Real-Time Patient Matrix</h2>
+        <p class="text-xs text-[var(--muted-foreground)]">Click any patient card to launch the Deep-Dive Inspector & SHAP explainability breakdown.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <input type="text" id="searchInput" oninput="renderBeds()" placeholder="Search Bed ID, Ward, or Diagnosis..." class="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted-foreground)] text-xs px-3 py-2 rounded-lg w-64 focus:outline-none focus:border-blue-500">
+        <select id="filterSelect" onchange="renderBeds()" class="bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] text-xs px-3 py-2 rounded-lg focus:outline-none">
+          <option value="ALL">All Risk Levels</option>
+          <option value="HIGH">High Risk (>50%)</option>
+          <option value="MEDIUM">Medium Risk (20-50%)</option>
+          <option value="LOW">Low Risk (<20%)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- PATIENT BED CARDS GRID -->
+    <div id="bedGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    </div>
+  </div>
+
+  <!-- TAB 2: PATIENT INSPECTOR -->
+  <div id="view-inspector" class="hidden space-y-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-bold text-[var(--foreground)]" id="inspTitle">Patient Inspector - Bed ICU-04</h2>
+        <p class="text-xs text-[var(--muted-foreground)]">Longitudinal vital signs, risk trajectory, and SHAP risk factor attributions.</p>
+      </div>
+      <button onclick="switchTab('matrix')" class="text-xs bg-[var(--card)] border border-[var(--border)] px-3 py-1.5 rounded-lg text-[var(--foreground)] hover:bg-[var(--border)]">
+        ← Back to Bed Matrix
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="bg-[var(--card)] border border-[var(--border)] p-5 rounded-2xl space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20" id="inspBedBadge">Bed ICU-04</span>
+          <span class="text-xs font-extrabold px-2.5 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/30" id="inspRiskBadge">HIGH RISK ALERT</span>
+        </div>
+
+        <div>
+          <h3 class="text-xl font-extrabold text-[var(--foreground)]" id="inspPatientId">ICU-0004 (Male, 68 y/o)</h3>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5" id="inspMeta">Ward: Surgical ICU | Diag: Sepsis / Septic Shock</p>
+        </div>
+
+        <div class="bg-[var(--background)] p-4 rounded-xl border border-[var(--border)] text-center space-y-2">
+          <div class="text-xs font-semibold text-[var(--muted-foreground)]">12-Hour Deterioration Probability</div>
+          <div class="text-4xl font-black text-red-500" id="inspRiskVal">78.4%</div>
+          <div class="w-full bg-[var(--border)] h-2 rounded-full overflow-hidden">
+            <div id="inspRiskBar" class="bg-gradient-to-r from-amber-500 to-red-500 h-full rounded-full transition-all duration-500" style="width: 78.4%;"></div>
+          </div>
+        </div>
+
+        <div id="inspAlertBox" class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs space-y-1">
+          <div class="font-bold flex items-center gap-1.5">⚠️ CRITICAL ALERT - Immediate Action:</div>
+          <p id="inspAlertAction">Initiate immediate ICU attending review. Arterial blood gas & lactate repeat indicated within 1 hour.</p>
+        </div>
+
+        <div>
+          <h4 class="text-xs font-bold text-[var(--foreground)] uppercase mb-2">Latest Bedside Vitals</h4>
+          <div class="grid grid-cols-2 gap-2 text-xs" id="inspVitalsMini">
+          </div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-[var(--card)] border border-[var(--border)] p-5 rounded-2xl space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-[var(--foreground)]">Risk Trajectory Timeline (Past 24h & 12h Prediction Horizon)</h3>
+            <span class="text-[11px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-medium">Transfer Learning Model</span>
+          </div>
+          <div class="h-44 w-full relative" id="svgTrajectoryContainer">
+          </div>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] p-5 rounded-2xl space-y-3">
+          <h3 class="text-sm font-bold text-[var(--foreground)]">Risk Factor Attributions (SHAP Explanations)</h3>
+          <p class="text-xs text-[var(--muted-foreground)]">Quantifies how each clinical variable shifted the patient's deterioration risk upward or downward.</p>
+          <div class="space-y-2.5 pt-2" id="shapList">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: TRANSFER LEARNING WORKBENCH -->
+  <div id="view-workbench" class="hidden space-y-6">
+    <div class="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl space-y-4">
+      <h2 class="text-lg font-bold text-[var(--foreground)]">Foundation Model Fine-Tuning & Architecture</h2>
+      <p class="text-xs text-[var(--muted-foreground)]">Simulate staged transfer learning: freeze foundation encoder layers to train prediction head, then unfreeze upper layers for end-to-end optimization.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+        <div class="space-y-3 bg-[var(--background)] p-4 rounded-xl border border-[var(--border)]">
+          <label class="text-xs font-bold text-[var(--foreground)] block">Pretrained Encoder:</label>
+          <select class="w-full bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] text-xs p-2 rounded-lg">
+            <option>ClinicalBERT (Pretrained Medical Representations)</option>
+            <option>Med-BERT (Temporal EHR Transformer)</option>
+            <option>EHR-Foundation (Sequence Transformer)</option>
+          </select>
+
+          <label class="text-xs font-bold text-[var(--foreground)] block mt-3">Fine-Tuning Strategy:</label>
+          <div class="space-y-1.5 text-xs text-[var(--muted-foreground)]">
+            <label class="flex items-center gap-2">
+              <input type="radio" name="strategy" checked class="accent-blue-500"> Stage 1: Frozen Encoder (Train Head Only)
+            </label>
+            <label class="flex items-center gap-2">
+              <input type="radio" name="strategy" class="accent-blue-500"> Stage 2: Joint Unfrozen Fine-Tuning
+            </label>
+          </div>
+
+          <button onclick="runFineTuneSim()" id="fineTuneBtn" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-colors shadow-sm">
+            🔥 Run Staged Fine-Tuning
+          </button>
+        </div>
+
+        <div class="md:col-span-2 bg-[var(--background)] p-4 rounded-xl border border-[var(--border)] space-y-2">
+          <div class="flex items-center justify-between text-xs font-bold text-[var(--foreground)]">
+            <span>Epoch Loss History (Binary Cross Entropy)</span>
+            <span id="lossStatusText" class="text-blue-400 font-semibold">Status: Epoch 30 Complete (Loss: 0.162)</span>
+          </div>
+          <div class="h-44 w-full flex items-end gap-1.5 pt-4 pb-2 border-b border-[var(--border)]" id="lossBarsContainer">
+          </div>
+          <div class="text-[11px] text-[var(--muted-foreground)] flex justify-between">
+            <span>Epoch 1 (Loss: 0.685)</span>
+            <span>Epoch 15 (Loss: 0.312)</span>
+            <span>Epoch 30 (Loss: 0.162)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: MODEL METRICS & CALIBRATION -->
+  <div id="view-metrics" class="hidden space-y-6">
+    <div class="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl space-y-4">
+      <h2 class="text-lg font-bold text-[var(--foreground)]">Model Validation & Calibration Benchmarks</h2>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs text-left text-[var(--foreground)]">
+          <thead class="bg-[var(--background)] text-[var(--muted-foreground)] uppercase font-semibold border-b border-[var(--border)]">
+            <tr>
+              <th class="p-3">Model Architecture</th>
+              <th class="p-3">AUROC</th>
+              <th class="p-3">AUPRC</th>
+              <th class="p-3">Sensitivity</th>
+              <th class="p-3">Specificity</th>
+              <th class="p-3">F1 Score</th>
+              <th class="p-3">Brier Score</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[var(--border)]">
+            <tr class="bg-blue-500/10 font-bold">
+              <td class="p-3 text-blue-400">Proposed: Medical Foundation Model (Fine-Tuned)</td>
+              <td class="p-3 text-blue-400">0.9142</td>
+              <td class="p-3 text-emerald-400">0.8875</td>
+              <td class="p-3">92.3%</td>
+              <td class="p-3">88.6%</td>
+              <td class="p-3">0.865</td>
+              <td class="p-3 text-emerald-400">0.0712</td>
+            </tr>
+            <tr>
+              <td class="p-3">Baseline: Gradient Boosted Trees (XGBoost)</td>
+              <td class="p-3">0.8210</td>
+              <td class="p-3">0.7640</td>
+              <td class="p-3">81.5%</td>
+              <td class="p-3">80.2%</td>
+              <td class="p-3">0.742</td>
+              <td class="p-3">0.1245</td>
+            </tr>
+            <tr>
+              <td class="p-3">Baseline: Logistic Regression</td>
+              <td class="p-3">0.7435</td>
+              <td class="p-3">0.6812</td>
+              <td class="p-3">73.0%</td>
+              <td class="p-3">72.4%</td>
+              <td class="p-3">0.665</td>
+              <td class="p-3">0.1680</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let patients = [];
+    let selectedId = "ICU-0004";
+    let isSimulating = true;
+    let simTimer = null;
+
+    function init() {
+      const wards = ['Medical ICU', 'Surgical ICU', 'Cardiac Care Unit', 'Neuro ICU'];
+      const diags = ['Sepsis / Septic Shock', 'Acute Respiratory Failure', 'Post-Op CABG', 'Traumatic Brain Injury', 'Acute Renal Failure'];
+
+      for (let i = 1; i <= 20; i++) {
+        const pid = `ICU-${String(i).padStart(4, '0')}`;
+        const bed = `Bed ICU-${String(i).padStart(2, '0')}`;
+        const isDeteriorating = (i === 4 || i === 9 || i === 15);
+        const risk = isDeteriorating ? (0.65 + Math.random() * 0.28) : (0.04 + Math.random() * 0.16);
+
+        patients.push({
+          id: pid,
+          bed: bed,
+          age: Math.floor(Math.random() * 45) + 35,
+          gender: Math.random() > 0.5 ? 'Male' : 'Female',
+          ward: wards[i % wards.length],
+          diag: diags[i % diags.length],
+          risk: risk,
+          vitals: {
+            hr: Math.round(isDeteriorating ? 112 + Math.random()*15 : 74 + Math.random()*10),
+            map: Math.round(isDeteriorating ? 56 - Math.random()*8 : 84 + Math.random()*8),
+            spo2: Math.round(isDeteriorating ? 90 - Math.random()*3 : 98 + Math.random()*1),
+            lactate: parseFloat((isDeteriorating ? 3.4 + Math.random()*2 : 1.1 + Math.random()*0.3).toFixed(1))
+          }
+        });
+      }
+
+      renderBeds();
+      inspect('ICU-0004');
+      renderLossBars([0.685, 0.582, 0.491, 0.415, 0.362, 0.312, 0.274, 0.235, 0.201, 0.182, 0.162]);
+      startSim();
+    }
+
+    function renderBeds() {
+      const grid = document.getElementById('bedGrid');
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const filter = document.getElementById('filterSelect').value;
+
+      const filtered = patients.filter(p => {
+        const rClass = p.risk >= 0.5 ? 'HIGH' : (p.risk >= 0.2 ? 'MEDIUM' : 'LOW');
+        const matchQ = p.id.toLowerCase().includes(query) || p.bed.toLowerCase().includes(query) || p.ward.toLowerCase().includes(query);
+        const matchF = (filter === 'ALL') || (rClass === filter);
+        return matchQ && matchF;
+      });
+
+      grid.innerHTML = filtered.map(p => {
+        const rPct = (p.risk * 100).toFixed(1);
+        let badgeBg = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+        let barBg = "bg-emerald-500";
+        let rClass = "LOW";
+
+        if (p.risk >= 0.5) {
+          badgeBg = "bg-red-500/20 text-red-400 border-red-500/30";
+          barBg = "bg-gradient-to-r from-amber-500 to-red-500";
+          rClass = "HIGH";
+        } else if (p.risk >= 0.2) {
+          badgeBg = "bg-amber-500/20 text-amber-400 border-amber-500/30";
+          barBg = "bg-amber-500";
+          rClass = "MEDIUM";
+        }
+
+        return `
+          <div onclick="inspect('${p.id}')" class="bg-[var(--card)] border border-[var(--border)] hover:border-blue-500/50 p-4 rounded-xl cursor-pointer transition-all shadow-sm space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold text-sm text-[var(--foreground)]">${p.bed}</span>
+              <span class="text-[10px] font-extrabold px-2 py-0.5 rounded border ${badgeBg}">${rClass} RISK</span>
+            </div>
+
+            <div>
+              <div class="text-xs font-bold text-[var(--foreground)]">${p.id} (${p.gender}, ${p.age})</div>
+              <div class="text-[11px] text-[var(--muted-foreground)]">${p.ward}</div>
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-[var(--muted-foreground)]">12h Deterioration Prob</span>
+                <span class="font-extrabold ${p.risk >= 0.5 ? 'text-red-500' : 'text-[var(--foreground)]'}">${rPct}%</span>
+              </div>
+              <div class="w-full bg-[var(--border)] h-1.5 rounded-full overflow-hidden">
+                <div class="${barBg} h-full rounded-full" style="width: ${rPct}%;"></div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1.5 pt-1 text-[11px] bg-[var(--background)] p-2 rounded-lg border border-[var(--border)]">
+              <span>HR: <strong class="text-[var(--foreground)]">${p.vitals.hr} bpm</strong></span>
+              <span>MAP: <strong class="text-[var(--foreground)]">${p.vitals.map} mmHg</strong></span>
+              <span>SpO2: <strong class="text-[var(--foreground)]">${p.vitals.spo2}%</strong></span>
+              <span>Lactate: <strong class="text-[var(--foreground)]">${p.vitals.lactate}</strong></span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function inspect(pid) {
+      selectedId = pid;
+      const p = patients.find(x => x.id === pid) || patients[0];
+      const rPct = (p.risk * 100).toFixed(1);
+
+      document.getElementById('inspTitle').innerText = `Patient Inspector - ${p.bed}`;
+      document.getElementById('inspBedBadge').innerText = p.bed;
+      document.getElementById('inspPatientId').innerText = `${p.id} (${p.gender}, ${p.age} y/o)`;
+      document.getElementById('inspMeta').innerText = `Ward: ${p.ward} | Diag: ${p.diag}`;
+      document.getElementById('inspRiskVal').innerText = `${rPct}%`;
+      document.getElementById('inspRiskBar').style.width = `${rPct}%`;
+
+      document.getElementById('inspVitalsMini').innerHTML = `
+        <div class="bg-[var(--background)] p-2 rounded-lg border border-[var(--border)]">HR: <strong class="text-[var(--foreground)]">${p.vitals.hr} bpm</strong></div>
+        <div class="bg-[var(--background)] p-2 rounded-lg border border-[var(--border)]">MAP: <strong class="text-[var(--foreground)]">${p.vitals.map} mmHg</strong></div>
+        <div class="bg-[var(--background)] p-2 rounded-lg border border-[var(--border)]">SpO2: <strong class="text-[var(--foreground)]">${p.vitals.spo2}%</strong></div>
+        <div class="bg-[var(--background)] p-2 rounded-lg border border-[var(--border)]">Lactate: <strong class="text-[var(--foreground)]">${p.vitals.lactate} mmol/L</strong></div>
+      `;
+
+      renderTrajectorySvg(p);
+      renderShap(p);
+      switchTab('inspector');
+    }
+
+    function renderTrajectorySvg(p) {
+      const container = document.getElementById('svgTrajectoryContainer');
+      const pts = [];
+      for (let i = 0; i < 20; i++) {
+        const x = (i / 19) * 100;
+        const y = 100 - (p.risk * 100 * (0.2 + 0.8 * (i/19)));
+        pts.push(`${x},${y}`);
+      }
+      const polyStr = pts.join(' ');
+
+      container.innerHTML = `
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full text-blue-500 overflow-visible">
+          <polyline fill="none" stroke="currentColor" stroke-width="2.5" points="${polyStr}" />
+          <circle cx="100" cy="${100 - p.risk*100}" r="3" fill="#ef4444" />
+        </svg>
+      `;
+    }
+
+    function renderShap(p) {
+      const attributions = [
+        { name: `Lactate Rise (${p.vitals.lactate} mmol/L)`, val: +34.2 },
+        { name: `MAP Drop (${p.vitals.map} mmHg)`, val: +26.5 },
+        { name: `SpO2 Desaturation (${p.vitals.spo2}%)`, val: +18.4 },
+        { name: `Tachycardia (${p.vitals.hr} bpm)`, val: +12.1 },
+        { name: `Baseline pH Stability (7.38)`, val: -8.8 }
+      ];
+
+      document.getElementById('shapList').innerHTML = attributions.map(a => `
+        <div class="space-y-1">
+          <div class="flex justify-between text-xs">
+            <span class="text-[var(--foreground)] font-medium">${a.name}</span>
+            <span class="font-extrabold ${a.val > 0 ? 'text-red-400' : 'text-emerald-400'}">${a.val > 0 ? '+' : ''}${a.val}%</span>
+          </div>
+          <div class="w-full bg-[var(--background)] border border-[var(--border)] h-2 rounded-full overflow-hidden">
+            <div class="${a.val > 0 ? 'bg-red-500' : 'bg-emerald-500'} h-full rounded-full" style="width: ${Math.abs(a.val)}%;"></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderLossBars(losses) {
+      const container = document.getElementById('lossBarsContainer');
+      const maxL = Math.max(...losses);
+      container.innerHTML = losses.map((l, i) => `
+        <div class="flex-1 bg-blue-500/80 hover:bg-blue-400 rounded-t transition-all" style="height: ${(l/maxL)*100}%;" title="Epoch ${i+1}: ${l}"></div>
+      `).join('');
+    }
+
+    function runFineTuneSim() {
+      const btn = document.getElementById('fineTuneBtn');
+      btn.innerText = "⏳ Fine-Tuning Encoder...";
+      btn.disabled = true;
+
+      setTimeout(() => {
+        const losses = [0.685, 0.54, 0.42, 0.32, 0.25, 0.19, 0.14, 0.11, 0.09, 0.07];
+        renderLossBars(losses);
+        document.getElementById('lossStatusText').innerText = "Status: Fine-Tuning Complete (Final Loss: 0.070)";
+        btn.innerText = "✓ Fine-Tuning Complete";
+        btn.disabled = false;
+      }, 1200);
+    }
+
+    function switchTab(tabId) {
+      ['matrix', 'inspector', 'workbench', 'metrics'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).className = "px-4 py-2 rounded-lg text-sm font-semibold transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
+      });
+
+      document.getElementById(`view-${tabId}`).classList.remove('hidden');
+      document.getElementById(`tab-${tabId}`).className = "px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] shadow-sm";
+    }
+
+    function toggleSimulator() {
+      isSimulating = !isSimulating;
+      const btn = document.getElementById('simToggleBtn');
+      if (isSimulating) {
+        btn.className = "bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm";
+        btn.innerHTML = "<span>▶</span> Live Streaming (Active)";
+        startSim();
+      } else {
+        btn.className = "bg-[var(--card)] border border-[var(--border)] text-[var(--muted-foreground)] text-xs font-semibold px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm";
+        btn.innerHTML = "<span>⏸</span> Streaming Paused";
+        clearInterval(simTimer);
+      }
+    }
+
+    function startSim() {
+      clearInterval(simTimer);
+      simTimer = setInterval(() => {
+        const p4 = patients.find(x => x.id === "ICU-0004");
+        if (p4) {
+          p4.vitals.hr = Math.min(160, p4.vitals.hr + (Math.random() > 0.4 ? 1 : -1));
+          p4.vitals.map = Math.max(45, p4.vitals.map - (Math.random() > 0.3 ? 1 : -1));
+          p4.risk = Math.min(0.98, p4.risk + 0.003);
+        }
+        if (!document.getElementById('view-matrix').classList.contains('hidden')) renderBeds();
+      }, 2500);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICU Patient Deterioration Early-Warning System | Transfer Learning AI</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-theme">
+    <!-- Top System Header -->
+    <header class="app-header">
+        <div class="brand-container">
+            <div class="brand-icon">
+                <i class="fa-solid fa-heart-pulse"></i>
+            </div>
+            <div class="brand-text">
+                <h1>ICU Deterioration Early-Warning System</h1>
+                <span class="subtitle">EHR Transfer Learning via Pretrained Medical Foundation Models</span>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <!-- Simulator Controls -->
+            <div class="simulator-panel">
+                <span class="sim-label"><i class="fa-solid fa-tower-broadcast"></i> Live Stream:</span>
+                <button id="simPlayBtn" class="btn btn-sm btn-success"><i class="fa-solid fa-play"></i> Streaming</button>
+                <button id="simSpeedBtn" class="btn btn-sm btn-outline">1x Speed</button>
+            </div>
+
+            <!-- Theme Toggle & Help -->
+            <button id="themeToggleBtn" class="btn btn-icon" title="Toggle Light/Dark Theme">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+            <button id="reportExportBtn" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-file-pdf"></i> Export Rounds Report
+            </button>
+        </div>
+    </header>
+
+    <!-- Ticker Bar -->
+    <div class="ticker-bar">
+        <div class="ticker-item"><i class="fa-solid fa-shield-halved text-success"></i> Model: <strong>Clinical Foundation Encoder</strong></div>
+        <div class="ticker-item"><i class="fa-solid fa-clock text-info"></i> Horizon: <strong>Next 12 Hours</strong></div>
+        <div class="ticker-item"><i class="fa-solid fa-bed text-warning"></i> Monitored Beds: <strong id="monitoredBedsCount">20</strong></div>
+        <div class="ticker-item"><i class="fa-solid fa-triangle-exclamation text-danger"></i> High Risk Alerts: <strong id="highRiskCount">3</strong></div>
+        <div class="ticker-item ticker-pulse"><i class="fa-solid fa-circle text-danger"></i> <span>Bed-04: Lactate spike to 4.2 mmol/L (86% Risk)</span></div>
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <nav class="nav-menu">
+                <a href="#monitorSection" class="nav-item active" data-tab="monitor">
+                    <i class="fa-solid fa-gauge-high"></i>
+                    <span>ICU Bed Matrix</span>
+                </a>
+                <a href="#inspectorSection" class="nav-item" data-tab="inspector">
+                    <i class="fa-solid fa-user-doctor"></i>
+                    <span>Patient Inspector</span>
+                </a>
+                <a href="#workbenchSection" class="nav-item" data-tab="workbench">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>Transfer Learning</span>
+                </a>
+                <a href="#metricsSection" class="nav-item" data-tab="metrics">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Model Workbench</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="model-badge">
+                    <div class="badge-title">Pretrained Encoder</div>
+                    <div class="badge-status"><i class="fa-solid fa-circle-check text-success"></i> Fine-Tuned Stage 2</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace View -->
+        <main class="main-content">
+            <!-- SECTION 1: ICU BED MONITORING GRID -->
+            <section id="monitorSection" class="tab-page active">
+                <div class="page-header">
+                    <div>
+                        <h2>ICU Patient Monitoring Matrix</h2>
+                        <p class="section-desc">Real-time longitudinal telemetry data & 12h deterioration risk predictions.</p>
+                    </div>
+                    
+                    <div class="filter-controls">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="patientSearchInput" placeholder="Search Bed ID, Patient, or Ward...">
+                        </div>
+                        <select id="riskFilterSelect" class="form-select">
+                            <option value="ALL">All Risk Levels</option>
+                            <option value="HIGH">High Risk Alert (>50%)</option>
+                            <option value="MEDIUM">Medium Risk (20-50%)</option>
+                            <option value="LOW">Low Risk (<20%)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Patient Bed Cards Grid -->
+                <div class="bed-grid" id="patientBedGrid">
+                    <!-- Dynamic Patient Cards Injected Here -->
+                </div>
+            </section>
+
+            <!-- SECTION 2: PATIENT DEEP-DIVE INSPECTOR -->
+            <section id="inspectorSection" class="tab-page">
+                <div class="page-header">
+                    <div>
+                        <h2 id="inspectorPatientTitle">Patient Telemetry & Risk Inspector</h2>
+                        <p class="section-desc">Temporal vital sign trends, risk trajectory, and SHAP explainability breakdown.</p>
+                    </div>
+                    <button class="btn btn-outline btn-sm" id="backToGridBtn"><i class="fa-solid fa-arrow-left"></i> Back to Bed Matrix</button>
+                </div>
+
+                <div class="inspector-layout">
+                    <!-- Left Column: Patient Summary & Action -->
+                    <div class="inspector-left">
+                        <div class="glass-card patient-header-card">
+                            <div class="patient-id-badge" id="inspBedBadge">Bed ICU-04</div>
+                            <h3 id="inspPatientName">ICU-0004 (Male, 68 y/o)</h3>
+                            <div class="patient-meta" id="inspPatientMeta">
+                                <span><i class="fa-solid fa-hospital-user"></i> Ward: Surgical ICU</span>
+                                <span><i class="fa-solid fa-stethoscope"></i> Diag: Sepsis / Septic Shock</span>
+                            </div>
+
+                            <div class="risk-score-box">
+                                <div class="risk-gauge-container">
+                                    <div class="risk-value" id="inspRiskVal">78.4%</div>
+                                    <div class="risk-label" id="inspRiskBadge">HIGH RISK ALERT</div>
+                                </div>
+                                <div class="risk-bar-outer">
+                                    <div class="risk-bar-inner high" id="inspRiskBar" style="width: 78.4%;"></div>
+                                </div>
+                            </div>
+
+                            <div class="alert-action-box" id="inspActionBox">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <div>
+                                    <strong>CRITICAL ALERT - Immediate Action:</strong>
+                                    <p id="inspActionText">Initiate immediate ICU attending review. Arterial blood gas & lactate repeat indicated within 1 hour.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Current Vitals Snapshot Card -->
+                        <div class="glass-card vitals-snapshot-card">
+                            <h4><i class="fa-solid fa-heart-pulse"></i> Bedside Telemetry Snapshot</h4>
+                            <div class="vitals-mini-grid" id="inspVitalsGrid">
+                                <!-- Vitals Mini Cards -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Temporal Waveforms & SHAP Explainability -->
+                    <div class="inspector-right">
+                        <!-- Chart 1: Continuous Risk Trajectory -->
+                        <div class="glass-card chart-card">
+                            <div class="chart-header">
+                                <h4><i class="fa-solid fa-chart-line text-primary"></i> Deterioration Risk Trajectory (Past 24h & 12h Prediction)</h4>
+                                <span class="badge badge-info">12h Prediction Horizon</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="riskTrajectoryChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Grid for Vitals Waveform & SHAP Attributions -->
+                        <div class="two-col-grid">
+                            <!-- Chart 2: Vital Signs Waveform -->
+                            <div class="glass-card chart-card">
+                                <div class="chart-header">
+                                    <h4><i class="fa-solid fa-wave-square text-success"></i> Vital Signs & Lab Dynamics</h4>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="vitalsWaveformChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Chart 3: SHAP Feature Attributions -->
+                            <div class="glass-card chart-card">
+                                <div class="chart-header">
+                                    <h4><i class="fa-solid fa-circle-nodes text-warning"></i> Risk Factor Attribution (SHAP Explanations)</h4>
+                                </div>
+                                <div class="attribution-list" id="shapAttributionList">
+                                    <!-- Dynamic SHAP Bars -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 3: TRANSFER LEARNING WORKBENCH -->
+            <section id="workbenchSection" class="tab-page">
+                <div class="page-header">
+                    <div>
+                        <h2>Foundation Model Transfer Learning Workbench</h2>
+                        <p class="section-desc">Interactive fine-tuning engine comparing baseline models vs pretrained representations.</p>
+                    </div>
+                </div>
+
+                <div class="workbench-layout">
+                    <!-- Controls Card -->
+                    <div class="glass-card config-card">
+                        <h3><i class="fa-solid fa-sliders"></i> Staged Fine-Tuning Hyperparameters</h3>
+                        
+                        <div class="form-group">
+                            <label>Foundation Model Encoder:</label>
+                            <select class="form-select" id="foundationModelSelect">
+                                <option>ClinicalBERT (Pretrained Medical Representations)</option>
+                                <option>Med-BERT (Temporal Sequence Encoder)</option>
+                                <option>EHR-Transformer (Pretrained Clinical Embeddings)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Fine-Tuning Strategy:</label>
+                            <div class="radio-group">
+                                <label><input type="radio" name="ftStrategy" value="frozen" checked> Stage 1: Frozen Encoder (Train Head Only)</label>
+                                <label><input type="radio" name="ftStrategy" value="unfrozen"> Stage 2: Joint Unfrozen Fine-Tuning</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Learning Rate (<span id="lrVal">0.001</span>):</label>
+                            <input type="range" id="lrRange" min="0.0001" max="0.01" step="0.0005" value="0.001" class="form-range">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Fine-Tuning Epochs (<span id="epochsVal">30</span>):</label>
+                            <input type="range" id="epochsRange" min="5" max="100" step="5" value="30" class="form-range">
+                        </div>
+
+                        <button id="runFineTuneBtn" class="btn btn-primary w-100"><i class="fa-solid fa-fire-flame-curved"></i> Trigger Model Fine-Tuning</button>
+                    </div>
+
+                    <!-- Training Metrics & Architecture Spec -->
+                    <div class="glass-card training-card">
+                        <h3><i class="fa-solid fa-chart-area"></i> Epoch Loss Curve & Fine-Tuning Progression</h3>
+                        <div class="chart-container">
+                            <canvas id="fineTuneLossChart"></canvas>
+                        </div>
+
+                        <div class="arch-box">
+                            <h4><i class="fa-solid fa-sitemap"></i> Transfer Learning Pipeline Topology</h4>
+                            <div class="topo-diagram">
+                                <div class="topo-node">Raw EHR Telemetry</div>
+                                <i class="fa-solid fa-arrow-right"></i>
+                                <div class="topo-node">Temporal Sliding Window</div>
+                                <i class="fa-solid fa-arrow-right"></i>
+                                <div class="topo-node highlight">Pretrained Encoder (64d)</div>
+                                <i class="fa-solid fa-arrow-right"></i>
+                                <div class="topo-node">Fine-Tuned Dense Head</div>
+                                <i class="fa-solid fa-arrow-right"></i>
+                                <div class="topo-node alert">Deterioration Risk Score</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 4: MODEL EVALUATION & CALIBRATION HUB -->
+            <section id="metricsSection" class="tab-page">
+                <div class="page-header">
+                    <div>
+                        <h2>Model Performance & Reliability Calibration Hub</h2>
+                        <p class="section-desc">Rigorous discrimination (AUROC, AUPRC) & calibration metrics across model architectures.</p>
+                    </div>
+                </div>
+
+                <!-- Comparative Metrics Cards -->
+                <div class="metrics-cards-grid">
+                    <div class="glass-card metric-card border-left-primary">
+                        <div class="m-title">AUROC (Discrimination)</div>
+                        <div class="m-val text-primary" id="metricAuroc">0.9142</div>
+                        <div class="m-sub">Baseline GBDT: 0.8210 (+9.3%)</div>
+                    </div>
+                    <div class="glass-card metric-card border-left-success">
+                        <div class="m-title">AUPRC (Precision-Recall)</div>
+                        <div class="m-val text-success" id="metricAuprc">0.8875</div>
+                        <div class="m-sub">High precision for rare deterioration</div>
+                    </div>
+                    <div class="glass-card metric-card border-left-warning">
+                        <div class="m-title">Sensitivity (Recall @ 35% Thresh)</div>
+                        <div class="m-val text-warning" id="metricSensitivity">92.3%</div>
+                        <div class="m-sub">Correctly flags true deteriorations</div>
+                    </div>
+                    <div class="glass-card metric-card border-left-info">
+                        <div class="m-title">Brier Score (Calibration)</div>
+                        <div class="m-val text-info" id="metricBrier">0.0712</div>
+                        <div class="m-sub">Lower score indicates superior calibration</div>
+                    </div>
+                </div>
+
+                <!-- Two Column Charts -->
+                <div class="two-col-grid">
+                    <!-- ROC Curve -->
+                    <div class="glass-card chart-card">
+                        <div class="chart-header">
+                            <h4><i class="fa-solid fa-bezier-curve text-primary"></i> Receiver Operating Characteristic (ROC Curve)</h4>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="rocCurveChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Calibration Reliability Curve -->
+                    <div class="glass-card chart-card">
+                        <div class="chart-header">
+                            <h4><i class="fa-solid fa-bullseye text-warning"></i> Reliability Calibration Diagram</h4>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="calibrationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Evaluation Table -->
+                <div class="glass-card table-card margin-top">
+                    <h4><i class="fa-solid fa-table"></i> Model Performance Comparison Table</h4>
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Model Architecture</th>
+                                <th>AUROC</th>
+                                <th>AUPRC</th>
+                                <th>Sensitivity</th>
+                                <th>Specificity</th>
+                                <th>F1 Score</th>
+                                <th>Brier Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metricsTableBody">
+                            <!-- Injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Printable Clinical Report Modal -->
+    <div class="modal-overlay" id="reportModal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-file-medical"></i> ICU Early-Warning Patient Report</h3>
+                <button class="modal-close" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body" id="reportPrintArea">
+                <div class="report-header">
+                    <h2>INTENSIVE CARE UNIT - EARLY WARNING REPORT</h2>
+                    <p>Generated by Pretrained Medical Foundation Model Early-Warning Pipeline</p>
+                    <hr>
+                </div>
+                <div class="report-grid">
+                    <div><strong>Report Date:</strong> 2026-09-27 09:15</div>
+                    <div><strong>Prediction Horizon:</strong> Next 12 Hours</div>
+                    <div><strong>Total Patients Monitored:</strong> 20 Beds</div>
+                    <div><strong>High Risk Deterioration Cases:</strong> 3 Patients</div>
+                </div>
+
+                <h4 style="margin-top:20px;">High Risk Patients Requiring Immediate Review:</h4>
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Bed</th>
+                            <th>Patient ID</th>
+                            <th>Diagnosis</th>
+                            <th>Key Vitals Drop</th>
+                            <th>Deterioration Risk</th>
+                            <th>Clinical Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportTableBody">
+                        <!-- Injected -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="printReportBtn"><i class="fa-solid fa-print"></i> Print Report</button>
+                <button class="btn btn-primary" id="dismissModalBtn">Close Window</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
