@@ -59,7 +59,7 @@ Serve the `web/` directory using Python HTTP server or open `web/index.html` dir
 ```bash
 python -m http.server 3000 --directory web
 ```
-Then open `http://localhost:3000` in your web browser.
+Then open `https://icu-deterioration-early-warning.netlify.app/` in your web browser.
 
 ---
 
